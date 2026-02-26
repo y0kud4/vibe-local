@@ -58,10 +58,27 @@ curl -fsSL https://raw.githubusercontent.com/ochyai/vibe-local/main/install.sh |
 Invoke-Expression (Invoke-RestMethod -Uri https://raw.githubusercontent.com/ochyai/vibe-local/main/install.ps1)
 ```
 
-**3.** 新しいターミナルを開いて起動:
-
 ```bash
 vibe-local
+```
+
+### アップグレード
+
+#### 1. 通常のユーザー
+インストールコマンドを再実行するだけで、最新のスクリプトに上書きされます。
+```bash
+curl -fsSL https://raw.githubusercontent.com/ochyai/vibe-local/main/install.sh | bash
+```
+
+#### 2. 開発者・フォークを利用している方
+自身のリポジトリで更新を取り込む場合は、gitを使用して同期してください。
+```bash
+# upstream (元のリポジトリ) を登録
+git remote add upstream https://github.com/ochyai/vibe-local.git
+
+# 最新の変更を取得してマージ
+git fetch upstream
+git merge upstream/main
 ```
 
 ### 使い方
@@ -70,11 +87,11 @@ vibe-local
 # 対話モード（AIと会話しながらコーディング）
 vibe-local
 
-# ワンショット（1回だけ質問）
-vibe-local -p "Pythonでじゃんけんゲーム作って"
-
 # モデルを手動指定
 vibe-local --model qwen3:8b
+
+# LM Studio を使用する
+vibe-local --lmstudio
 ```
 
 ### 対応環境
@@ -142,6 +159,13 @@ VIBE_DEBUG_TUI=1 vibe-local
 **対話中にスクロール領域を診断**
 ```
 > /debug-scroll
+```
+
+**LM Studio に接続できない**
+```bash
+# LM Studio の "Start Server" がオンになっているか確認してください
+# ポート 1234 でリッスンしている必要があります
+vibe-local --lmstudio
 ```
 
 </details>
@@ -267,10 +291,27 @@ curl -fsSL https://raw.githubusercontent.com/ochyai/vibe-local/main/install.sh |
 Invoke-Expression (Invoke-RestMethod -Uri https://raw.githubusercontent.com/ochyai/vibe-local/main/install.ps1)
 ```
 
-**3.** Open a new terminal and run:
-
 ```bash
 vibe-local
+```
+
+### Upgrading
+
+#### 1. Regular Users
+Simply re-run the installation command to overwrite with the latest scripts.
+```bash
+curl -fsSL https://raw.githubusercontent.com/ochyai/vibe-local/main/install.sh | bash
+```
+
+#### 2. Developers / Fork Users
+To sync your fork with the latest official changes:
+```bash
+# Add upstream remote
+git remote add upstream https://github.com/ochyai/vibe-local.git
+
+# Fetch and merge
+git fetch upstream
+git merge upstream/main
 ```
 
 ### Usage
@@ -279,11 +320,11 @@ vibe-local
 # Interactive mode (chat with AI while coding)
 vibe-local
 
-# One-shot (ask once)
-vibe-local -p "Create a snake game in Python"
-
 # Specify model manually
 vibe-local --model qwen3:8b
+
+# Use LM Studio
+vibe-local --lmstudio
 ```
 
 ### Supported Environments
@@ -353,6 +394,13 @@ VIBE_DEBUG_TUI=1 vibe-local
 > /debug-scroll
 ```
 
+**Cannot connect to LM Studio**
+```bash
+# Ensure "Start Server" is ON in LM Studio
+# It must be listening on port 1234 by default
+vibe-local --lmstudio
+```
+
 </details>
 
 ---
@@ -388,10 +436,27 @@ curl -fsSL https://raw.githubusercontent.com/ochyai/vibe-local/main/install.sh |
 Invoke-Expression (Invoke-RestMethod -Uri https://raw.githubusercontent.com/ochyai/vibe-local/main/install.ps1)
 ```
 
-**3.** 打开新终端并运行：
-
 ```bash
 vibe-local
+```
+
+### 升级更新
+
+#### 1. 普通用户
+只需重新运行安装命令即可覆盖并更新到最新脚本。
+```bash
+curl -fsSL https://raw.githubusercontent.com/ochyai/vibe-local/main/install.sh | bash
+```
+
+#### 2. 开发者 / Fork 用户
+要将您的 Fork 与官方最新更改同步：
+```bash
+# 添加上游仓库
+git remote add upstream https://github.com/ochyai/vibe-local.git
+
+# 获取并合并更改
+git fetch upstream
+git merge upstream/main
 ```
 
 ### 使用方法
@@ -400,11 +465,11 @@ vibe-local
 # 交互模式（与AI对话编程）
 vibe-local
 
-# 单次执行（只问一次）
-vibe-local -p "用Python写一个贪吃蛇游戏"
-
-# 手动指定模型
+# 手動指定模型
 vibe-local --model qwen3:8b
+
+# 使用 LM Studio
+vibe-local --lmstudio
 ```
 
 ### 支持的环境
@@ -474,6 +539,13 @@ VIBE_DEBUG_TUI=1 vibe-local
 > /debug-scroll
 ```
 
+**无法连接到 LM Studio**
+```bash
+# 确保 LM Studio 中的 "Start Server" 已开启
+# 默认情况下应监听 1234 端口
+vibe-local --lmstudio
+```
+
 </details>
 
 ---
@@ -496,6 +568,8 @@ VIBE_DEBUG_TUI=1 vibe-local
 │  │  Agent Loop (parallel tool execution)                │  │
 │  │  User input → LLM → Tool calls → Execute →          │  │
 │  │  Add results → Loop until done                       │  │
+│  ├──────────────────────────────────────────────────────┤  │
+│  │  Client Manager (Ollama / OpenAI / LM Studio)       │  │
 │  ├──────────────────────────────────────────────────────┤  │
 │  │  16 Built-in Tools + MCP Tools                       │  │
 │  │  Bash (+ background), Read (+ images/PDF/ipynb),     │  │
@@ -531,15 +605,17 @@ VIBE_DEBUG_TUI=1 vibe-local
 │  │  Permission Manager (safe / ask / deny tiers)        │  │
 │  │  Session Persistence (JSONL) + Context Compaction    │  │
 │  │  TUI (readline, ANSI colors, markdown rendering)     │  │
-│  │  Multimodal (image base64 → Ollama vision models)    │  │
-│  └──────────────────────┬───────────────────────────────┘  │
-└─────────────────────────┼──────────────────────────────────┘
-                          │  OpenAI Chat API (/v1/chat/completions)
-                          ▼
+│  │  Multimodal (image base64 → LLM vision models)       │  │
+│  └──────────────────────┬───────────────┬───────────────┘  │
+└─────────────────────────┼───────────────┼──────────────────┘
+                          │               │
+     OpenAI / LM Studio API               │  Ollama native API
+      (/v1/chat/completions)              │  (localhost:11434)
+                          ▼               ▼
 ┌────────────────────────────────────────────────────────────┐
-│  Ollama (localhost:11434)                                   │
-│  Local LLM inference runtime                                │
-│  qwen3-coder:30b / qwen3:8b / qwen3:1.7b / ...            │
+│             Local LLM Inference Runtime                    │
+│      Ollama / LM Studio / Any OpenAI-compatible API        │
+│    qwen3-coder:30b / qwen3:8b / llama3.3 / etc.            │
 └────────────────────────────────────────────────────────────┘
 ```
 
@@ -598,6 +674,8 @@ There are many excellent open-source projects in the AI coding agent space. Each
 | `--session-id <id>` | | Resume specific session | 指定セッション再開 | 恢复特定会话 |
 | `--list-sessions` | | List saved sessions | セッション一覧 | 列出会话 |
 | `--ollama-host <url>` | | Ollama API endpoint | Ollamaエンドポイント | Ollama API端点 |
+| `--lmstudio` | | Use LM Studio (port 1234) | LM Studioを使用 (1234番) | 使用 LM Studio (1234端口) |
+| `--api <name>` | | API type (ollama/openai) | API種類の指定 | 指定 API 类型 |
 | `--max-tokens <n>` | | Max output tokens (default: 8192) | 最大出力トークン数 | 最大输出令牌数 |
 | `--temperature <f>` | | Sampling temperature (default: 0.7) | サンプリング温度 | 采样温度 |
 | `--context-window <n>` | | Context window size (default: 32768) | コンテキストウィンドウ | 上下文窗口 |

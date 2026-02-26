@@ -40,12 +40,18 @@ if [ -f "$CONFIG_FILE" ]; then
     _s="$(_val SIDECAR_MODEL)"
     _h="$(_val OLLAMA_HOST)"
     _d="$(_val VIBE_LOCAL_DEBUG)"
+    _a="$(_val VIBE_LOCAL_API)"
     [ -n "$_m" ] && MODEL="$_m"
     [ -n "$_s" ] && SIDECAR_MODEL="$_s"
     [ -n "$_h" ] && OLLAMA_HOST="$_h"
     [ -n "$_d" ] && VIBE_LOCAL_DEBUG="$_d"
+    [ -n "$_a" ] && VIBE_LOCAL_API="$_a"
     unset -f _val
-    unset _m _s _h _d
+    unset _m _s _h _d _a
+fi
+
+if [ -z "${VIBE_LOCAL_API:-}" ]; then
+    VIBE_LOCAL_API="ollama"
 fi
 
 # [SEC] Validate OLLAMA_HOST - only allow localhost (SSRF prevention)
@@ -56,7 +62,11 @@ if [[ "$OLLAMA_HOST" =~ ^http://(localhost|127\.0\.0\.1|\[::1\]):[0-9]{1,5}(/.*)
 fi
 if [ "$_host_valid" -eq 0 ]; then
     echo "⚠️  OLLAMA_HOST='$OLLAMA_HOST' はlocalhostではありません。セキュリティのためlocalhostにリセットします。"
-    OLLAMA_HOST="http://localhost:11434"
+    if [ "$VIBE_LOCAL_API" = "lmstudio" ]; then
+        OLLAMA_HOST="http://localhost:1234/v1"
+    else
+        OLLAMA_HOST="http://localhost:11434"
+    fi
 fi
 unset _host_valid
 
@@ -85,6 +95,11 @@ fi
 
 # --- ollama が起動しているか確認・起動 ---
 ensure_ollama() {
+    if [ "$VIBE_LOCAL_API" != "ollama" ]; then
+        # Skip checks for LM Studio or other APIs
+        return 0
+    fi
+
     if curl -s --max-time 2 "$OLLAMA_HOST/api/tags" &>/dev/null; then
         return 0
     fi
@@ -136,6 +151,22 @@ EXTRA_ARGS=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
+        --lmstudio)
+            VIBE_LOCAL_API="lmstudio"
+            # If not explicitly set in config, update host
+            if [ "$OLLAMA_HOST" = "http://localhost:11434" ] || [ -z "$OLLAMA_HOST" ]; then
+                OLLAMA_HOST="http://localhost:1234/v1"
+            fi
+            shift
+            ;;
+        --api)
+            if [[ $# -lt 2 ]]; then
+                echo "Error: --api requires an argument"
+                exit 1
+            fi
+            VIBE_LOCAL_API="$2"
+            shift 2
+            ;;
         --auto)
             AUTO_MODE=1
             shift
@@ -192,9 +223,9 @@ if [ -n "$MODEL" ]; then
     MODEL_ARGS+=(--model "$MODEL")
 fi
 
-# モデルがロード済みか確認 (モデルが指定されている場合のみ)
+# モデルがロード済みか確認 (Ollamaの場合のみ設定確認)
 # Two-stage check: Python JSON first, grep -F fallback
-if [ -n "$MODEL" ]; then
+if [ -n "$MODEL" ] && [ "$VIBE_LOCAL_API" = "ollama" ]; then
     _model_found=0
     _api_response="$(curl -s "$OLLAMA_HOST/api/tags" 2>/dev/null)"
     if [ -n "$_api_response" ]; then
@@ -293,16 +324,19 @@ if [ -n "$MODEL" ]; then
 else
     echo " Model: (auto-detect)"
 fi
-echo " Ollama: $OLLAMA_HOST"
+echo " API: $VIBE_LOCAL_API"
+echo " Host: $OLLAMA_HOST"
 echo " Engine: vibe-coder.py (direct, no proxy)"
 echo "============================================"
 echo ""
 
 OLLAMA_HOST="$OLLAMA_HOST" \
+VIBE_LOCAL_API="$VIBE_LOCAL_API" \
 VIBE_LOCAL_MODEL="${MODEL:-}" \
 VIBE_LOCAL_SIDECAR_MODEL="${SIDECAR_MODEL:-}" \
 VIBE_LOCAL_DEBUG="${VIBE_LOCAL_DEBUG:-0}" \
 exec python3 "$VIBE_CODER_SCRIPT" \
+    --api "$VIBE_LOCAL_API" \
     ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
     ${PERM_ARGS[@]+"${PERM_ARGS[@]}"} \
     ${DEBUG_ARGS[@]+"${DEBUG_ARGS[@]}"} \

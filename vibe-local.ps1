@@ -67,20 +67,42 @@ if (Test-Path $ConfigFile) {
         if ($line -match '^\s*#') { continue }
         if ($line -match '^\s*MODEL\s*=\s*"?([^"]*)"?\s*$') { $CfgModel = $Matches[1].Trim() }
         if ($line -match '^\s*SIDECAR_MODEL\s*=\s*"?([^"]*)"?\s*$') { $SidecarModel = $Matches[1].Trim() }
-        if ($line -match '^\s*OLLAMA_HOST\s*=\s*"?([^"]*)"?\s*$') { $OllamaHost = $Matches[1].Trim() }
-        if ($line -match '^\s*VIBE_LOCAL_DEBUG\s*=\s*"?([01])"?\s*$') { $VibeLocalDebug = [int]$Matches[1] }
+        if ($line -match '^\s*OLLAMA_HOST\s*=\s*"?([^"]*)"?\s*$') { $CfgOllamaHost = $Matches[1].Trim() }
+        if ($line -match '^\s*API\s*=\s*"?([^"]*)"?\s*$') { $CfgApi = $Matches[1].Trim() }
+        if ($line -match '^\s*VIBE_LOCAL_DEBUG\s*=\s*"?([01])"?\s*$') { $CfgDebug = $Matches[1].Trim() }
     }
 }
 
 # Command line overrides
 if ($Model) { $CfgModel = $Model }
-if ($DebugMode) { $VibeLocalDebug = 1 }
+if ($OllamaHost) { $CfgOllamaHost = $OllamaHost }
+if ($Api) { $CfgApi = $Api }
+
+# Apply config file values if not overridden by command line
+if ($null -ne $CfgOllamaHost) { $OllamaHost = $CfgOllamaHost }
+if ($null -ne $CfgDebug -and $CfgDebug -eq "1") { $Debug = $true }
+if ($null -ne $CfgApi) { $Api = $CfgApi }
+
+if ($LmStudio) {
+    if ($Api -eq "") { $Api = "lmstudio" }
+    if ($OllamaHost -eq "http://localhost:11434" -or $OllamaHost -eq "") {
+        $OllamaHost = "http://localhost:1234/v1"
+    }
+}
+
+if ($Api -eq "") {
+    $Api = "ollama"
+}
 
 # [SEC] Validate OLLAMA_HOST - only allow localhost (SSRF prevention)
 $ollamaUri = [System.Uri]::new($OllamaHost)
 if ($ollamaUri.Host -notin @("localhost", "127.0.0.1", "::1", "[::1]")) {
     Write-Host "Warning: OLLAMA_HOST '$($ollamaUri.Host)' is not localhost. Resetting to localhost for security." -ForegroundColor Yellow
-    $OllamaHost = "http://localhost:11434"
+    if ($Api -eq "lmstudio") {
+        $OllamaHost = "http://localhost:1234/v1"
+    } else {
+        $OllamaHost = "http://localhost:11434"
+    }
 }
 
 # --- Find vibe-coder.py ---
@@ -140,7 +162,13 @@ function Test-OllamaRunning {
     }
 }
 
+# --- Check or Start Ollama ---
 function Ensure-Ollama {
+    if ($Api -ne "ollama") {
+        # Skip checks for LM Studio or other APIs
+        return $true
+    }
+
     # First check: is Ollama already running?
     if (Test-OllamaRunning) {
         return $true
@@ -211,7 +239,7 @@ try {
     }
 
     # Check model is available (if specified)
-    if ($CfgModel) {
+    if ($CfgModel -and $Api -eq "ollama") {
         try {
             $resp = Invoke-WebRequest -Uri "$OllamaHost/api/tags" -TimeoutSec 5 -UseBasicParsing -ErrorAction Stop
             $tags = $resp.Content | ConvertFrom-Json
@@ -240,7 +268,7 @@ try {
     # --- Permission check ---
     $PermArgs = @()
 
-    if ($Yes) {
+    if ($Yes -or $DangerouslySkipPermissions) {
         $PermArgs += "-y"
     } else {
         Write-Host ""
@@ -272,7 +300,7 @@ try {
     }
 
     $DebugArgs = @()
-    if ($VibeLocalDebug -eq 1) { $DebugArgs += "--debug" }
+    if ($Debug) { $DebugArgs += "--debug" }
 
     $ModelArgs = @()
     if ($CfgModel) { $ModelArgs += @("--model", $CfgModel) }
@@ -287,24 +315,32 @@ try {
     }
     Write-Host " Ollama: $OllamaHost"
     Write-Host " Engine: vibe-coder.py (direct, no proxy)"
+    Write-Host " API: $Api"
     Write-Host "============================================"
     Write-Host ""
 
     $env:OLLAMA_HOST = $OllamaHost
     $env:VIBE_LOCAL_MODEL = $CfgModel
     $env:VIBE_LOCAL_SIDECAR_MODEL = if ($SidecarModel) { $SidecarModel } else { "" }
-    $env:VIBE_LOCAL_DEBUG = "$VibeLocalDebug"
+    $env:VIBE_LOCAL_API = $Api
+    $env:VIBE_LOCAL_DEBUG = if ($Debug) { "1" } else { "0" }
     $env:PYTHONIOENCODING = "utf-8"
     $env:PYTHONUTF8 = "1"
 
     $PromptArgs = @()
     if ($Prompt) { $PromptArgs += @("-p", $Prompt) }
 
-    $allArgs = $ModelArgs + $PermArgs + $DebugArgs + $PromptArgs + $ExtraArgs
+    $scriptArgs = @()
+    $scriptArgs += "--api"
+    $scriptArgs += $Api
+    if ($ModelArgs) { $scriptArgs += $ModelArgs }
+    if ($PermArgs) { $scriptArgs += $PermArgs }
+    if ($DebugArgs) { $scriptArgs += $DebugArgs }
+    if ($PromptArgs) { $scriptArgs += $PromptArgs }
+    $scriptArgs += $ExtraArgs
 
     $pyParts = $PythonCmd -split ' '
     if ($pyParts.Count -eq 2) {
-        & $pyParts[0] $pyParts[1] "$VibeCoderScript" @allArgs
     } else {
         & $pyParts[0] "$VibeCoderScript" @allArgs
     }

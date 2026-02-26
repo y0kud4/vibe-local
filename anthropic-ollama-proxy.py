@@ -44,6 +44,14 @@ def _validate_ollama_host(url):
 
 OLLAMA_BASE = _validate_ollama_host(OLLAMA_BASE)
 
+# --- Determine API Engine ---
+VIBE_LOCAL_API = os.environ.get("VIBE_LOCAL_API", "ollama").lower()
+if VIBE_LOCAL_API == "lmstudio":
+    if os.environ.get("OLLAMA_HOST") is None:
+        OLLAMA_BASE = "http://localhost:1234/v1"
+    else:
+        OLLAMA_BASE = os.environ.get("OLLAMA_HOST").rstrip("/")
+
 # --- Model routing ---
 # Map Claude model patterns to local Ollama models
 # Main model: for full coding tasks (tool use, long context)
@@ -478,13 +486,23 @@ class AnthropicToOllamaHandler(http.server.BaseHTTPRequestHandler):
             self._respond(200, {"status": "ok", "proxy": "anthropic-to-ollama"})
         elif path == "/v1/models":
             try:
-                resp = urllib.request.urlopen(f"{OLLAMA_BASE}/v1/models", timeout=5)
+                # Both Ollama and OpenAI/LM Studio support GET /v1/models
+                req = urllib.request.Request(f"{OLLAMA_BASE}/v1/models")
+                if VIBE_LOCAL_API in ["openai", "lmstudio"]:
+                    req.add_header("Authorization", "Bearer lm-studio")
+                resp = urllib.request.urlopen(req, timeout=5)
                 data = json.loads(resp.read())
+                
+                # Format adjustment if it's an OpenAI style response (which has {"data": [...]})
+                if VIBE_LOCAL_API in ["openai", "lmstudio"] and "data" in data and "models" not in data:
+                    # Convert to Ollama format for the proxy client (Claude Code)
+                    data = {"models": data["data"]}
+                    
                 self._respond(200, data)
             except Exception as e:
                 # [SEC] Log full error internally, return generic message
                 print(f"[proxy] /v1/models error: {e}", file=sys.stderr)
-                self._respond(502, {"error": "failed to fetch models from ollama"})
+                self._respond(502, {"error": "failed to fetch models from local API"})
         else:
             # [SEC] Don't reflect user-supplied path in response (XSS prevention)
             self._respond(404, {"error": "not found"})
@@ -1030,6 +1048,8 @@ class AnthropicToOllamaHandler(http.server.BaseHTTPRequestHandler):
                 headers={"Content-Type": "application/json"},
                 method="POST",
             )
+            if VIBE_LOCAL_API in ["openai", "lmstudio"]:
+                oai_request.add_header("Authorization", "Bearer lm-studio")
 
             if stream:
                 self._handle_stream(oai_request, model, req_id=req_id, t_start=t_start, msg_count=len(messages), timeout=timeout)
@@ -1501,6 +1521,8 @@ def main():
             try:
                 body = json.dumps({"model": m, "messages": [{"role": "user", "content": "hi"}], "max_tokens": 1, "stream": False}).encode()
                 req = urllib.request.Request(f"{OLLAMA_BASE}/v1/chat/completions", data=body, headers={"Content-Type": "application/json"})
+                if VIBE_LOCAL_API in ["openai", "lmstudio"]:
+                    req.add_header("Authorization", "Bearer lm-studio")
                 urllib.request.urlopen(req, timeout=120)
                 print(f"[proxy] Warmup OK: {m}")
             except Exception as e:
