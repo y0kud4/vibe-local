@@ -2174,6 +2174,11 @@ class TestMAXMESSAGESEnforcement:
             "session_id": "test",
             "context_window": 999999,
             "sessions_dir": "/tmp",
+            "api": "ollama",
+            "ollama_host": "http://localhost:11434",
+            "max_tokens": 8192,
+            "temperature": 0.7,
+            "debug": False
         })()
         session = vc.Session(cfg, "system")
         # Set a low MAX_MESSAGES for testing
@@ -2187,6 +2192,11 @@ class TestMAXMESSAGESEnforcement:
             "session_id": "test",
             "context_window": 999999,
             "sessions_dir": "/tmp",
+            "api": "ollama",
+            "ollama_host": "http://localhost:11434",
+            "max_tokens": 8192,
+            "temperature": 0.7,
+            "debug": False
         })()
         session = vc.Session(cfg, "system")
         session.MAX_MESSAGES = 10
@@ -2447,7 +2457,8 @@ class TestSidecarCompaction:
         cfg.sessions_dir = tempfile.mkdtemp()
         session = vc.Session(cfg, "test prompt")
         assert hasattr(session, '_client')
-        assert session._client is None
+        assert session._client is not None
+        assert hasattr(session._client, 'chat')
 
     def test_set_client(self):
         """set_client should store the client reference."""

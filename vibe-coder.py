@@ -721,6 +721,7 @@ class Config:
         self.rag_topk = 5
         self.rag_model = "nomic-embed-text"
         self.rag_index = None  # path to index then exit
+        self.api = "ollama"    # "ollama", "openai", "lmstudio"
 
         # Paths (primary: vibe-local, with backward compat for old vibe-coder dirs)
         if os.name == "nt":
@@ -791,6 +792,8 @@ class Config:
                             self.max_tokens = int(val)
                         except ValueError:
                             pass
+                    elif key == "API" and val:
+                        self.api = val.lower()
                     elif key == "TEMPERATURE" and val:
                         try:
                             self.temperature = float(val)
@@ -818,6 +821,8 @@ class Config:
             self.sidecar_model = os.environ["VIBE_LOCAL_SIDECAR_MODEL"]
         if os.environ.get("VIBE_CODER_DEBUG") == "1" or os.environ.get("VIBE_LOCAL_DEBUG") == "1":
             self.debug = True
+        if os.environ.get("VIBE_LOCAL_API"):
+            self.api = os.environ["VIBE_LOCAL_API"].lower()
 
     def _load_cli_args(self, argv=None):
         # Strip full-width spaces from args (common with Japanese IME input)
@@ -865,6 +870,8 @@ class Config:
                             help="Ollama embedding model (default: nomic-embed-text)")
         parser.add_argument("--rag-index", metavar="PATH",
                             help="Index files at PATH for RAG and exit")
+        parser.add_argument("--api", choices=["ollama", "openai", "lmstudio"],
+                            help="API client to use (default: ollama)")
         args = parser.parse_args(argv)
 
         if args.prompt:
@@ -898,6 +905,13 @@ class Config:
         if args.rag_path:
             self.rag_path = args.rag_path
         if args.rag_topk is not None:
+            self.rag_topk = args.rag_topk
+        if args.rag_model:
+            self.rag_model = args.rag_model
+        if args.rag_index:
+            self.rag_index = args.rag_index
+        if args.api:
+            self.api = args.api.lower()
             self.rag_topk = args.rag_topk
         if args.rag_model:
             self.rag_model = args.rag_model
@@ -1826,6 +1840,186 @@ class OllamaClient:
             raw_args = func.get("arguments", "{}")
             # Cap argument size to prevent OOM on malformed responses
             if isinstance(raw_args, str) and len(raw_args) > 102400:  # 100KB
+                raw_args = raw_args[:102400]
+            try:
+                args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+                if not isinstance(args, dict):
+                    args = {"raw": str(args)}
+            except json.JSONDecodeError:
+                try:
+                    fixed = raw_args.replace("'", '"')
+                    fixed = re.sub(r',\s*}', '}', fixed)
+                    fixed = re.sub(r',\s*]', ']', fixed)
+                    args = json.loads(fixed)
+                except (json.JSONDecodeError, ValueError, TypeError, KeyError):
+                    args = {"raw": raw_args}
+            tool_calls.append({"id": tc_id, "name": name, "arguments": args})
+
+        return {"content": content, "tool_calls": tool_calls}
+
+
+# ════════════════════════════════════════════════════════════════════════════════
+# OpenAIClient — Direct communication with standard OpenAI API / LM Studio
+# ════════════════════════════════════════════════════════════════════════════════
+
+class OpenAIClient:
+    """Communicates with standard OpenAI API / LM Studio via /v1/chat/completions."""
+
+    def __init__(self, config):
+        self.base_url = config.ollama_host.rstrip('/')  # Assuming it's the base URL like http://localhost:1234/v1
+        self.max_tokens = config.max_tokens
+        self.temperature = config.temperature
+        self.context_window = config.context_window
+        self.debug = config.debug
+        self.timeout = 300
+        self.api_key = os.environ.get("OPENAI_API_KEY", "lm-studio")
+
+    def _auth_headers(self):
+        return {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {self.api_key}"
+        }
+
+    def check_connection(self, retries=3):
+        """Check if API is reachable. Returns (ok, model_list)."""
+        url = f"{self.base_url}/models"
+        for attempt in range(retries):
+            try:
+                req = urllib.request.Request(url, headers=self._auth_headers())
+                resp = urllib.request.urlopen(req, timeout=5)
+                try:
+                    data = json.loads(resp.read(10 * 1024 * 1024))
+                finally:
+                    resp.close()
+                models = [m["id"] for m in data.get("data", [])]
+                return True, models
+            except Exception as e:
+                if attempt < retries - 1:
+                    time.sleep(1)
+                    continue
+                return False, []
+
+    def detect_tool_streaming(self):
+        """Standard OpenAI API supports tool streaming."""
+        return True
+
+    def check_model(self, model_name, available_models=None):
+        if available_models is None:
+            ok, models = self.check_connection()
+            if not ok:
+                return False
+        else:
+            models = available_models
+        # For OpenAI/LM Studio, just check if it exists in the list or assume true if models list is empty but connected
+        if not models: # Some endpoints might return empty models but still work
+            return True
+        want = model_name.strip()
+        for m in models:
+            ms = m.strip()
+            if ms == want or want in ms:
+                return True
+        return False
+
+    def pull_model(self, model_name):
+        """Cannot pull models via standard OpenAI API."""
+        print(f"{C.YELLOW}Note: Please ensure the model '{model_name}' is loaded in LM Studio / API.{C.RESET}")
+        return True
+
+    def chat(self, model, messages, tools=None, stream=True):
+        temp = self.temperature
+        if tools:
+            temp = min(self.temperature, 0.3)
+
+        payload = {
+            "model": model,
+            "messages": messages,
+            "stream": stream,
+            "temperature": temp,
+            "max_tokens": self.max_tokens,
+        }
+        if tools:
+            payload["tools"] = tools
+
+        body = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/chat/completions",
+            data=body,
+            headers=self._auth_headers(),
+            method="POST",
+        )
+
+        if self.debug:
+            print(f"{C.DIM}[debug] POST {self.base_url}/chat/completions "
+                  f"model={model} msgs={len(messages)} tools={len(tools or [])} "
+                  f"stream={stream}{C.RESET}", file=sys.stderr)
+
+        try:
+            resp = urllib.request.urlopen(req, timeout=self.timeout)
+        except urllib.error.HTTPError as e:
+            error_body = ""
+            try:
+                error_body = e.read().decode("utf-8", errors="replace")[:500]
+            except Exception:
+                pass
+            finally:
+                e.close()
+            raise RuntimeError(f"API HTTP error {e.code}: {error_body}") from e
+
+        if stream:
+            return self._iter_sse(resp)
+        else:
+            try:
+                raw = resp.read(10 * 1024 * 1024)
+            finally:
+                resp.close()
+            data = json.loads(raw)
+            if self.debug:
+                usage = data.get("usage", {})
+                print(f"{C.DIM}[debug] Response: prompt={usage.get('prompt_tokens',0)} "
+                      f"completion={usage.get('completion_tokens',0)}{C.RESET}", file=sys.stderr)
+            return data
+
+    def _iter_sse(self, resp):
+        """Iterate over Server-Sent Events from OpenAI API."""
+        try:
+            for raw_line in resp:
+                line = raw_line.decode("utf-8", errors="replace").strip()
+                if not line or not line.startswith("data: "):
+                    continue
+                data_str = line[6:]
+                if data_str == "[DONE]":
+                    break
+                try:
+                    data = json.loads(data_str)
+                    yield data
+                except json.JSONDecodeError:
+                    continue
+        finally:
+            try:
+                resp.close()
+            except Exception:
+                pass
+
+    def tokenize(self, model, text):
+        """Fallback for tokenization."""
+        return len(text) // 4
+
+    def chat_sync(self, model, messages, tools=None):
+        resp = self.chat(model=model, messages=messages, tools=tools, stream=False)
+        choice = resp.get("choices", [{}])[0]
+        message = choice.get("message", {})
+        content = message.get("content", "") or ""
+        raw_tool_calls = message.get("tool_calls", [])
+
+        content = re.sub(r'<think>[\s\S]*?</think>', '', content).strip()
+
+        tool_calls = []
+        for tc in raw_tool_calls:
+            func = tc.get("function", {})
+            tc_id = tc.get("id", f"call_{uuid.uuid4().hex[:8]}")
+            name = func.get("name", "")
+            raw_args = func.get("arguments", "{}")
+            if isinstance(raw_args, str) and len(raw_args) > 102400:
                 raw_args = raw_args[:102400]
             try:
                 args = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
@@ -5235,7 +5429,13 @@ class Session:
         self.config = config
         self.system_prompt = system_prompt
         self.messages = []
-        self._client = None  # OllamaClient for sidecar summarization
+        # TUI state
+        self._tool_handlers = None  # Delay init until tools bound
+        self._coordinator = None
+        if config.api in ["openai", "lmstudio"]:
+            self._client = OpenAIClient(config)
+        else:
+            self._client = OllamaClient(config)  # Default
         raw_id = config.session_id or (
             datetime.now().strftime("%Y%m%d_%H%M%S") + "_" + uuid.uuid4().hex[:6]
         )
@@ -5248,7 +5448,7 @@ class Session:
         self._just_compacted = False  # skip token reconciliation right after compaction
 
     def set_client(self, client):
-        """Set OllamaClient reference for sidecar model summarization."""
+        """Overwrites the client if needed."""
         self._client = client
 
     @staticmethod
@@ -7328,14 +7528,25 @@ def main():
         return
 
     # Show banner immediately so user sees output while connecting
+    # Display TUI banner
     tui = TUI(config)
     if not config.prompt:
         tui.banner(config, model_ok=True)  # skip banner in one-shot mode (-p)
 
-    # Check Ollama connection
-    client = OllamaClient(config)
+    # Instantiate API client
+    if config.api in ["openai", "lmstudio"]:
+        client = OpenAIClient(config)
+    else:
+        client = OllamaClient(config)
+
+    # Check connection
     ok, models = client.check_connection()
     if not ok:
+        if config.api in ["openai", "lmstudio"]:
+            print(f"\n{C.RED}LM Studio / OpenAI API ({config.api}) is not running.{C.RESET}")
+            print(f"{C.DIM}Please ensure LM Studio server is started on {config.ollama_host}.{C.RESET}")
+            sys.exit(1)
+            
         print(f"\n{C.RED}Ollama (the local AI engine) is not running.{C.RESET}")
         if platform.system() == "Darwin":
             print(f"{C.DIM}Look for the llama icon in your menu bar, or open the Ollama app.{C.RESET}")
