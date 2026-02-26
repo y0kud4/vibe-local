@@ -70,11 +70,11 @@ vibe-local
 # 対話モード（AIと会話しながらコーディング）
 vibe-local
 
-# ワンショット（1回だけ質問）
-vibe-local -p "Pythonでじゃんけんゲーム作って"
-
 # モデルを手動指定
 vibe-local --model qwen3:8b
+
+# LM Studio を使用する
+vibe-local --lmstudio
 ```
 
 ### 対応環境
@@ -142,6 +142,13 @@ VIBE_DEBUG_TUI=1 vibe-local
 **対話中にスクロール領域を診断**
 ```
 > /debug-scroll
+```
+
+**LM Studio に接続できない**
+```bash
+# LM Studio の "Start Server" がオンになっているか確認してください
+# ポート 1234 でリッスンしている必要があります
+vibe-local --lmstudio
 ```
 
 </details>
@@ -279,11 +286,11 @@ vibe-local
 # Interactive mode (chat with AI while coding)
 vibe-local
 
-# One-shot (ask once)
-vibe-local -p "Create a snake game in Python"
-
 # Specify model manually
 vibe-local --model qwen3:8b
+
+# Use LM Studio
+vibe-local --lmstudio
 ```
 
 ### Supported Environments
@@ -353,6 +360,13 @@ VIBE_DEBUG_TUI=1 vibe-local
 > /debug-scroll
 ```
 
+**Cannot connect to LM Studio**
+```bash
+# Ensure "Start Server" is ON in LM Studio
+# It must be listening on port 1234 by default
+vibe-local --lmstudio
+```
+
 </details>
 
 ---
@@ -400,11 +414,11 @@ vibe-local
 # 交互模式（与AI对话编程）
 vibe-local
 
-# 单次执行（只问一次）
-vibe-local -p "用Python写一个贪吃蛇游戏"
-
-# 手动指定模型
+# 手動指定模型
 vibe-local --model qwen3:8b
+
+# 使用 LM Studio
+vibe-local --lmstudio
 ```
 
 ### 支持的环境
@@ -472,6 +486,13 @@ VIBE_DEBUG_TUI=1 vibe-local
 **交互式诊断滚动区域**
 ```
 > /debug-scroll
+```
+
+**无法连接到 LM Studio**
+```bash
+# 确保 LM Studio 中的 "Start Server" 已开启
+# 默认情况下应监听 1234 端口
+vibe-local --lmstudio
 ```
 
 </details>
@@ -598,6 +619,8 @@ There are many excellent open-source projects in the AI coding agent space. Each
 | `--session-id <id>` | | Resume specific session | 指定セッション再開 | 恢复特定会话 |
 | `--list-sessions` | | List saved sessions | セッション一覧 | 列出会话 |
 | `--ollama-host <url>` | | Ollama API endpoint | Ollamaエンドポイント | Ollama API端点 |
+| `--lmstudio` | | Use LM Studio (port 1234) | LM Studioを使用 (1234番) | 使用 LM Studio (1234端口) |
+| `--api <name>` | | API type (ollama/openai) | API種類の指定 | 指定 API 类型 |
 | `--max-tokens <n>` | | Max output tokens (default: 8192) | 最大出力トークン数 | 最大输出令牌数 |
 | `--temperature <f>` | | Sampling temperature (default: 0.7) | サンプリング温度 | 采样温度 |
 | `--context-window <n>` | | Context window size (default: 32768) | コンテキストウィンドウ | 上下文窗口 |
