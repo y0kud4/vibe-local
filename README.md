@@ -58,10 +58,27 @@ curl -fsSL https://raw.githubusercontent.com/ochyai/vibe-local/main/install.sh |
 Invoke-Expression (Invoke-RestMethod -Uri https://raw.githubusercontent.com/ochyai/vibe-local/main/install.ps1)
 ```
 
-**3.** 新しいターミナルを開いて起動:
-
 ```bash
 vibe-local
+```
+
+### アップグレード
+
+#### 1. 通常のユーザー
+インストールコマンドを再実行するだけで、最新のスクリプトに上書きされます。
+```bash
+curl -fsSL https://raw.githubusercontent.com/ochyai/vibe-local/main/install.sh | bash
+```
+
+#### 2. 開発者・フォークを利用している方
+自身のリポジトリで更新を取り込む場合は、gitを使用して同期してください。
+```bash
+# upstream (元のリポジトリ) を登録
+git remote add upstream https://github.com/ochyai/vibe-local.git
+
+# 最新の変更を取得してマージ
+git fetch upstream
+git merge upstream/main
 ```
 
 ### 使い方
@@ -274,10 +291,27 @@ curl -fsSL https://raw.githubusercontent.com/ochyai/vibe-local/main/install.sh |
 Invoke-Expression (Invoke-RestMethod -Uri https://raw.githubusercontent.com/ochyai/vibe-local/main/install.ps1)
 ```
 
-**3.** Open a new terminal and run:
-
 ```bash
 vibe-local
+```
+
+### Upgrading
+
+#### 1. Regular Users
+Simply re-run the installation command to overwrite with the latest scripts.
+```bash
+curl -fsSL https://raw.githubusercontent.com/ochyai/vibe-local/main/install.sh | bash
+```
+
+#### 2. Developers / Fork Users
+To sync your fork with the latest official changes:
+```bash
+# Add upstream remote
+git remote add upstream https://github.com/ochyai/vibe-local.git
+
+# Fetch and merge
+git fetch upstream
+git merge upstream/main
 ```
 
 ### Usage
@@ -402,10 +436,27 @@ curl -fsSL https://raw.githubusercontent.com/ochyai/vibe-local/main/install.sh |
 Invoke-Expression (Invoke-RestMethod -Uri https://raw.githubusercontent.com/ochyai/vibe-local/main/install.ps1)
 ```
 
-**3.** 打开新终端并运行：
-
 ```bash
 vibe-local
+```
+
+### 升级更新
+
+#### 1. 普通用户
+只需重新运行安装命令即可覆盖并更新到最新脚本。
+```bash
+curl -fsSL https://raw.githubusercontent.com/ochyai/vibe-local/main/install.sh | bash
+```
+
+#### 2. 开发者 / Fork 用户
+要将您的 Fork 与官方最新更改同步：
+```bash
+# 添加上游仓库
+git remote add upstream https://github.com/ochyai/vibe-local.git
+
+# 获取并合并更改
+git fetch upstream
+git merge upstream/main
 ```
 
 ### 使用方法
@@ -518,6 +569,8 @@ vibe-local --lmstudio
 │  │  User input → LLM → Tool calls → Execute →          │  │
 │  │  Add results → Loop until done                       │  │
 │  ├──────────────────────────────────────────────────────┤  │
+│  │  Client Manager (Ollama / OpenAI / LM Studio)       │  │
+│  ├──────────────────────────────────────────────────────┤  │
 │  │  16 Built-in Tools + MCP Tools                       │  │
 │  │  Bash (+ background), Read (+ images/PDF/ipynb),     │  │
 │  │  Write, Edit (+ rich diff), Glob, Grep,              │  │
@@ -552,15 +605,17 @@ vibe-local --lmstudio
 │  │  Permission Manager (safe / ask / deny tiers)        │  │
 │  │  Session Persistence (JSONL) + Context Compaction    │  │
 │  │  TUI (readline, ANSI colors, markdown rendering)     │  │
-│  │  Multimodal (image base64 → Ollama vision models)    │  │
-│  └──────────────────────┬───────────────────────────────┘  │
-└─────────────────────────┼──────────────────────────────────┘
-                          │  OpenAI Chat API (/v1/chat/completions)
-                          ▼
+│  │  Multimodal (image base64 → LLM vision models)       │  │
+│  └──────────────────────┬───────────────┬───────────────┘  │
+└─────────────────────────┼───────────────┼──────────────────┘
+                          │               │
+     OpenAI / LM Studio API               │  Ollama native API
+      (/v1/chat/completions)              │  (localhost:11434)
+                          ▼               ▼
 ┌────────────────────────────────────────────────────────────┐
-│  Ollama (localhost:11434)                                   │
-│  Local LLM inference runtime                                │
-│  qwen3-coder:30b / qwen3:8b / qwen3:1.7b / ...            │
+│             Local LLM Inference Runtime                    │
+│      Ollama / LM Studio / Any OpenAI-compatible API        │
+│    qwen3-coder:30b / qwen3:8b / llama3.3 / etc.            │
 └────────────────────────────────────────────────────────────┘
 ```
 
